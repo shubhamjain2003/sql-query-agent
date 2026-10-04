@@ -16,7 +16,7 @@ Classify the user's newest request:
 - explain: the user supplies SQL and wants it explained
 - destructive: asks to delete, update, insert, drop, alter, truncate, or otherwise change data or schema
 - out_of_scope: unrelated to SQL or this schema (general knowledge, sports, politics, maths, creative writing, non-SQL code)
-- clarify: SQL-related but too ambiguous to answer safely; put ONE short question in clarification
+- clarify: SQL-related but too ambiguous to answer safely, or it names a table or column that does not exist. Put ONE short message in clarification that says what is wrong or missing and lists the closest real options from the schema (for example: Employees has no Bonus column; its columns are EmployeeID, FirstName, ... Which one do you mean?)
 For every other intent, set clarification to an empty string.
 """
 
@@ -79,7 +79,7 @@ Classify the user's newest request:
 - explain: the user supplies SQL and wants it explained
 - destructive: asks to delete, update, insert, drop, alter, truncate, or otherwise change data or schema
 - out_of_scope: unrelated to SQL or this schema (general knowledge, sports, politics, maths, creative writing, non-SQL code)
-- clarify: SQL-related but too ambiguous to answer safely; put ONE short question in clarification
+- clarify: SQL-related but too ambiguous to answer safely, or it names a table or column that does not exist. Put ONE short message in clarification that says what is wrong or missing and lists the closest real options from the schema (for example: Employees has no Bonus column; its columns are EmployeeID, FirstName, ... Which one do you mean?)
 
 Only for generate, optimize, debug and explain, also return the SQL in the sql field. For generate, modify the last SQL
 if the request refines it. For debug, return the corrected query. For optimize, return the improved query.
