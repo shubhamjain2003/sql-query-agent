@@ -65,6 +65,7 @@ ul{margin:0;padding-left:18px}
     <div id="sqlbox" hidden><h2>SQL <button class="btn" id="copy" type="button">Copy SQL</button><button class="btn" id="dlsql" type="button" style="margin-left:0">Download SQL</button></h2><pre id="sql"></pre></div>
     <div id="expbox" hidden><h2>Explanation</h2><div id="exp"></div></div>
     <div id="notes" hidden></div>
+    <p class="hint" id="dnote" hidden></p>
     <div id="resbox" hidden><h2>Results <span class="hint" id="count"></span><button class="btn" id="dlcsv" type="button">Download CSV</button></h2><div class="tbl" id="tbl"></div></div>
   </section>
 </main>
@@ -92,6 +93,8 @@ function show(r){
   if(r.exec_error)n.push('<p class="err">Execution error: '+esc(r.exec_error)+'</p>');
   $('notes').hidden=!n.length;$('notes').innerHTML=n.join('');
   const has=r.columns&&r.columns.length;$('resbox').hidden=!has;
+  const other=r.sql&&!has&&r.dialect&&r.dialect!=='sqlite';$('dnote').hidden=!other;
+  if(other)$('dnote').textContent='This SQL was generated and checked against the schema for '+({postgres:'PostgreSQL',mysql:'MySQL'}[r.dialect]||r.dialect)+'. Results are only shown for SQLite, because the sample database runs on SQLite.';
   if(has){$('count').textContent=r.rows.length+' rows (max 100)';
     $('tbl').innerHTML='<table><thead><tr>'+r.columns.map(c=>'<th>'+esc(c)+'</th>').join('')+'</tr></thead><tbody>'+
     r.rows.map(row=>'<tr>'+row.map(v=>'<td>'+esc(v??'NULL')+'</td>').join('')+'</tr>').join('')+'</tbody></table>'}
@@ -110,9 +113,9 @@ $('f').onsubmit=async e=>{
   const wait=add('','bot hint');wait.innerHTML='<span class="spin"></span>Working on it';
   try{
     const res=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:sid,message:m,dialect:$('dialect').value})});
-    const data=await res.json();wait.remove();
+    const raw=await res.text();wait.remove();let data;try{data=JSON.parse(raw)}catch(_){throw new Error('The server is waking up, restarting, or timed out ('+res.status+'). Wait a minute and try again.')}
     if(!res.ok)throw new Error(data.detail||'Request failed');
-    const b=add(data.reply||'Done.','bot',data);
+    data.dialect=$('dialect').value;const b=add(data.reply||'Done.','bot',data);
     if(data.sql){b.click()}
   }catch(err){wait.remove();add(err instanceof TypeError?'Could not reach the server. Check your connection and try again.':err.message,'bot err')}
   $('send').disabled=false;$('q').focus();
