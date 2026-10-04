@@ -2,7 +2,7 @@
 
 Translates plain English into validated, read-only SQL for a fixed schema. It also explains, debugs and optimizes SQL, keeps conversation context for follow-ups, and refuses anything outside SQL.
 
-**Live app:** `https://sql-query-agent-a0t5.onrender.com`  |  **Demo video:** `<add link>`  |  No login needed.
+**Live app:** `https://sql-query-agent-a0t5.onrender.com`  |  **Demo video:** `https://drive.google.com/file/d/18M5uSlZS9bU-cWC2OD0LlP_ZIQ-n3g9z/view?usp=sharing`  |  No login needed.
 
 ## Run locally
 ```bash
