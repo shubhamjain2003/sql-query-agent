@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SQLPilot</title>
+<style>
+:root{--bg:#f6f7f9;--surface:#fff;--ink:#1b2430;--muted:#5c6877;--line:#dde2e8;--accent:#0f766e;--accent-ink:#fff;--bad:#b42318;--code:#f0f3f6}
+:root[data-theme=dark]{--bg:#0f141a;--surface:#171e26;--ink:#e6ebf1;--muted:#93a0af;--line:#263040;--accent:#3cc4b3;--accent-ink:#06201c;--bad:#ff8a80;--code:#0f151c}
+*{box-sizing:border-box}html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,Segoe UI,sans-serif;display:flex;flex-direction:column}
+header{display:flex;gap:12px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--line);background:var(--surface)}
+header h1{font-size:17px;margin:0;margin-right:auto}
+select,button,textarea{font:inherit;color:inherit}
+select,.btn{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:5px 10px;cursor:pointer}
+.btn:hover{border-color:var(--accent)}
+.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(300px,2fr) 3fr;gap:12px;padding:12px}
+section{background:var(--surface);border:1px solid var(--line);border-radius:8px;min-height:0;display:flex;flex-direction:column}
+#log{flex:1;overflow:auto;padding:12px;display:flex;flex-direction:column;gap:10px}
+.msg{max-width:92%;padding:8px 12px;border-radius:8px;white-space:pre-wrap}
+.user{align-self:flex-end;background:var(--accent);color:var(--accent-ink)}
+.bot{align-self:flex-start;background:var(--code);cursor:pointer;border:1px solid transparent}
+.bot.active{border-color:var(--accent)}
+.err{color:var(--bad)}
+.hint{color:var(--muted);font-size:13px}
+form{display:flex;gap:8px;padding:10px;border-top:1px solid var(--line)}
+textarea{flex:1;resize:none;border:1px solid var(--line);border-radius:6px;padding:8px;background:var(--bg)}
+#out{overflow:auto;padding:14px;gap:14px}
+h2{font-size:14px;margin:0 0 6px;display:flex;align-items:center;gap:8px}
+h2 .btn{margin-left:auto;font-size:13px;padding:2px 8px}
+pre{margin:0;white-space:pre-wrap;background:var(--code);border:1px solid var(--line);border-radius:6px;padding:10px;overflow:auto;font:13px/1.5 ui-monospace,Menlo,Consolas,monospace}
+pre b{color:var(--accent);font-weight:600}pre s{color:#b45309;text-decoration:none}
+:root[data-theme=dark] pre s{color:#f2b36b}
+.tbl{overflow:auto;max-height:260px;border:1px solid var(--line);border-radius:6px}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:5px 10px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+th{position:sticky;top:0;background:var(--code)}
+ul{margin:0;padding-left:18px}
+.spin{width:14px;height:14px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;display:inline-block;animation:r .8s linear infinite;vertical-align:-2px;margin-right:6px}
+@keyframes r{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spin{animation-duration:3s}}
+@media (max-width:800px){main{grid-template-columns:1fr;grid-auto-rows:minmax(320px,auto);overflow:auto}}
+</style>
+</head>
+<body>
+<header>
+  <h1>SQLPilot</h1>
+  <label class="hint" for="dialect">Dialect</label>
+  <select id="dialect"><option value="sqlite">SQLite</option><option value="postgres">PostgreSQL</option><option value="mysql">MySQL</option></select>
+  <button class="btn" id="theme" type="button">Dark mode</button>
+  <button class="btn" id="reset" type="button">New chat</button>
+</header>
+<main>
+  <section aria-label="Chat">
+    <div id="log" aria-live="polite"></div>
+    <form id="f">
+      <textarea id="q" rows="2" maxlength="2000" placeholder="Ask about the data, or paste SQL to fix or optimize" required></textarea>
+      <button class="btn primary" id="send">Send</button>
+    </form>
+  </section>
+  <section id="out" aria-label="Query output">
+    <p class="hint" id="empty">Generated SQL, its explanation, and results appear here. Select any earlier reply to bring its query back.</p>
+    <div id="sqlbox" hidden><h2>SQL <button class="btn" id="copy" type="button">Copy SQL</button><button class="btn" id="dlsql" type="button" style="margin-left:0">Download SQL</button></h2><pre id="sql"></pre></div>
+    <div id="expbox" hidden><h2>Explanation</h2><div id="exp"></div></div>
+    <div id="notes" hidden></div>
+    <div id="resbox" hidden><h2>Results <span class="hint" id="count"></span><button class="btn" id="dlcsv" type="button">Download CSV</button></h2><div class="tbl" id="tbl"></div></div>
+  </section>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+let sid=crypto.randomUUID(), cur=null;
+const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const KW=/\b(SELECT|FROM|WHERE|JOIN|LEFT|RIGHT|INNER|OUTER|CROSS|ON|USING|GROUP BY|ORDER BY|HAVING|LIMIT|AS|AND|OR|NOT|IN|IS|NULL|LIKE|BETWEEN|DISTINCT|COUNT|SUM|AVG|MIN|MAX|WITH|UNION|CASE|WHEN|THEN|ELSE|END|DESC|ASC)\b/gi;
+const hl=s=>esc(s).replace(KW,'<b>$1</b>').replace(/('[^']*')/g,'<s>$1</s>');
+const root=document.documentElement;
+root.dataset.theme=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';
+function themeLabel(){$('theme').textContent=root.dataset.theme==='dark'?'Light mode':'Dark mode'}
+themeLabel();
+$('theme').onclick=()=>{root.dataset.theme=root.dataset.theme==='dark'?'light':'dark';themeLabel()};
+function add(text,cls,data){const d=document.createElement('div');d.className='msg '+cls;d.textContent=text;
+  if(data){d.onclick=()=>{document.querySelectorAll('.bot').forEach(x=>x.classList.remove('active'));d.classList.add('active');show(data)}}
+  $('log').appendChild(d);$('log').scrollTop=1e9;return d}
+function show(r){
+  cur=r;$('empty').hidden=true;
+  $('sqlbox').hidden=!r.sql;if(r.sql)$('sql').innerHTML=hl(r.sql);
+  $('expbox').hidden=!r.explanation;$('exp').textContent=r.explanation||'';
+  const n=[];
+  if(r.issues&&r.issues.length)n.push('<h2>What was wrong or inefficient</h2><ul>'+r.issues.map(i=>'<li>'+esc(i)+'</li>').join('')+'</ul>');
+  if(r.suggestions&&r.suggestions.length)n.push('<h2 style="margin-top:10px">Suggestions</h2><ul>'+r.suggestions.map(i=>'<li>'+esc(i)+'</li>').join('')+'</ul>');
+  if(r.exec_error)n.push('<p class="err">Execution error: '+esc(r.exec_error)+'</p>');
+  $('notes').hidden=!n.length;$('notes').innerHTML=n.join('');
+  const has=r.columns&&r.columns.length;$('resbox').hidden=!has;
+  if(has){$('count').textContent=r.rows.length+' rows (max 100)';
+    $('tbl').innerHTML='<table><thead><tr>'+r.columns.map(c=>'<th>'+esc(c)+'</th>').join('')+'</tr></thead><tbody>'+
+    r.rows.map(row=>'<tr>'+row.map(v=>'<td>'+esc(v??'NULL')+'</td>').join('')+'</tr>').join('')+'</tbody></table>'}
+}
+const dl=(name,text,type)=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type}));a.download=name;a.click()};
+$('copy').onclick=async()=>{await navigator.clipboard.writeText(cur.sql);$('copy').textContent='Copied';setTimeout(()=>$('copy').textContent='Copy SQL',1200)};
+$('dlsql').onclick=()=>dl('query.sql',cur.sql,'text/plain');
+$('dlcsv').onclick=()=>{const q=v=>'"'+String(v??'').replace(/"/g,'""')+'"';
+  dl('results.csv',[cur.columns,...cur.rows].map(r=>r.map(q).join(',')).join('\n'),'text/csv')};
+$('reset').onclick=()=>{sid=crypto.randomUUID();$('log').innerHTML='';['sqlbox','expbox','notes','resbox'].forEach(i=>$(i).hidden=true);$('empty').hidden=false;greet()};
+function greet(){add('Ask about the data in plain English, for example "Show all employees hired after January 2024", or paste SQL to debug or optimize it. I only work on SQL for this schema.','bot')}
+$('q').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();$('f').requestSubmit()}});
+$('f').onsubmit=async e=>{
+  e.preventDefault();const m=$('q').value.trim();if(!m)return;
+  add(m,'user');$('q').value='';$('send').disabled=true;
+  const wait=add('','bot hint');wait.innerHTML='<span class="spin"></span>Working on it';
+  try{
+    const res=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_id:sid,message:m,dialect:$('dialect').value})});
+    const data=await res.json();wait.remove();
+    if(!res.ok)throw new Error(data.detail||'Request failed');
+    const b=add(data.reply||'Done.','bot',data);
+    if(data.sql){b.click()}
+  }catch(err){wait.remove();add(err instanceof TypeError?'Could not reach the server. Check your connection and try again.':err.message,'bot err')}
+  $('send').disabled=false;$('q').focus();
+};
+greet();
+</script>
+</body>
+</html>
