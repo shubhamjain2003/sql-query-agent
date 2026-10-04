@@ -37,12 +37,24 @@ def get_fks() -> set:
 
 
 def schema_text() -> str:
+    """Schema for the prompt: columns, foreign keys, and value hints for text columns (so the model
+    filters on real values like 'California' instead of guessing 'CA')."""
     con, lines = _con(), []
     for t in get_schema():
-        cols = ", ".join(f"{r[1]} {r[2]}{' PK' if r[5] else ''}" for r in con.execute(f"PRAGMA table_info({t})"))
-        lines.append(f"{t}({cols})")
+        info = list(con.execute(f"PRAGMA table_info({t})"))
+        lines.append(f"{t}(" + ", ".join(f"{r[1]} {r[2]}{' PK' if r[5] else ''}" for r in info) + ")")
         for r in con.execute(f"PRAGMA foreign_key_list({t})"):
             lines.append(f"  FK: {t}.{r[3]} -> {r[2]}.{r[4]}")
+        total = con.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
+        for r in info:
+            if (r[2] or "").upper() != "TEXT":
+                continue
+            vals = [v[0] for v in con.execute(
+                f'SELECT DISTINCT "{r[1]}" FROM {t} WHERE "{r[1]}" IS NOT NULL LIMIT 11')]
+            if 0 < len(vals) <= 10 and len(vals) < total:  # repeated values = categorical column
+                lines.append(f"  values {t}.{r[1]}: " + ", ".join(repr(v) for v in vals))
+            elif vals:
+                lines.append(f"  examples {t}.{r[1]}: " + ", ".join(repr(v) for v in vals[:3]))
     con.close()
     return "\n".join(lines)
 

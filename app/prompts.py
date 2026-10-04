@@ -20,6 +20,13 @@ Classify the user's newest request:
 For every other intent, set clarification to an empty string.
 """
 
+RULES = """Rules: use ONLY tables and columns from the schema, never invent any. Produce exactly one read-only SELECT
+statement (CTEs allowed). Join only along the foreign keys listed. Return only the SQL.
+For vague date phrases follow common usage: "after January 2024" means date >= '2024-01-01'; "in 2024" means a range from 2024-01-01 up to but not including 2025-01-01. Never use an arbitrary day like the 31st as a cutoff. Example: "hired after January 2024" is HireDate >= '2024-01-01' (never '2024-02-01').
+When filtering on a text column, use the exact values listed in the schema's values/examples lines; never abbreviate or reformat them (use 'California', not 'CA').
+If a table is joined with no foreign-key path to the other tables, remove that join instead of rewriting it, and never use CROSS JOIN.
+"""
+
 WRITE = GUARD + """
 
 Schema:
@@ -29,11 +36,7 @@ Dialect: {dialect}
 Last SQL in this conversation: {last_sql}
 Task: {task}
 
-Rules: use ONLY tables and columns from the schema, never invent any. Produce exactly one read-only SELECT
-statement (CTEs allowed). Join only along the foreign keys listed. Return only the SQL.
-For vague date phrases follow common usage: "after January 2024" means date >= '2024-01-01'; "in 2024" means a range from 2024-01-01 up to but not including 2025-01-01. Never use an arbitrary day like the 31st as a cutoff. Example: "hired after January 2024" is HireDate >= '2024-01-01' (never '2024-02-01').
-If a table is joined with no foreign-key path to the other tables, remove that join instead of rewriting it, and never use CROSS JOIN.
-{feedback}"""
+""" + RULES + """{feedback}"""
 
 TASKS = {
     "generate": "Write SQL for the request. If the request refines the last SQL, modify it instead of starting over.",
@@ -60,3 +63,25 @@ REFUSALS = {
     "out_of_scope": "I'm designed to assist only with SQL and database-related tasks. Please ask a question related to the provided database schema.",
     "destructive": "I can't generate statements that change data or schema (DELETE, UPDATE, INSERT, DROP, ALTER, TRUNCATE). I can help with read-only SELECT queries instead.",
 }
+
+PLAN = GUARD + """
+
+Schema:
+{schema}
+
+Dialect: {dialect}
+Last SQL in this conversation: {last_sql}
+
+Classify the user's newest request:
+- generate: a question answerable from the schema, including follow-ups that refine the last SQL
+- optimize: the user supplies SQL and wants it improved
+- debug: the user supplies broken SQL or asks why a query fails
+- explain: the user supplies SQL and wants it explained
+- destructive: asks to delete, update, insert, drop, alter, truncate, or otherwise change data or schema
+- out_of_scope: unrelated to SQL or this schema (general knowledge, sports, politics, maths, creative writing, non-SQL code)
+- clarify: SQL-related but too ambiguous to answer safely; put ONE short question in clarification
+
+Only for generate, optimize, debug and explain, also return the SQL in the sql field. For generate, modify the last SQL
+if the request refines it. For debug, return the corrected query. For optimize, return the improved query.
+For every other intent, set sql to an empty string. Unless the intent is clarify, set clarification to an empty string.
+""" + RULES
